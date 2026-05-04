@@ -41,7 +41,8 @@ import { I18nProvider, useI18n } from './i18n.jsx';
 import './styles.css';
 
 const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
-const defaultApiUrl = isLocalHost ? 'http://localhost:8787' : window.location.origin;
+const productionApiUrl = 'https://veritas-api-production-4255.up.railway.app';
+const defaultApiUrl = isLocalHost ? 'http://localhost:8787' : productionApiUrl;
 const apiUrl = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/$/, '');
 const wsUrl = (import.meta.env.VITE_WS_URL || apiUrl.replace(/^http/, 'ws')).replace(/\/$/, '');
 const messagePageSize = 30;
