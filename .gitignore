@@ -1,0 +1,11 @@
+node_modules/
+dist/
+release/
+uploads/
+mobile/android/app/build/
+mobile/android/.gradle/
+.env
+.env.local
+.env.*.local
+config/*.json
+npm-debug.log*

@@ -1,0 +1,8 @@
+{
+  "appId": "app.veritas.mobile",
+  "appName": "Veritas",
+  "webDir": "dist",
+  "android": {
+    "path": "mobile/android"
+  }
+}
