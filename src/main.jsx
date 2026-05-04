@@ -850,6 +850,10 @@ function App() {
           body: JSON.stringify({ email: normalizeAuthEmail(authForm.email) }),
         });
         const data = await readJsonSafely(response);
+        if ([401, 404, 405].includes(response.status)) {
+          setAuthStep(1);
+          return;
+        }
         if (!response.ok || !data.exists) {
           setAuthError(serverError(data?.errorCode ? data : { errorCode: 'AUTH_EMAIL_NOT_FOUND' }, t('server.AUTH_EMAIL_NOT_FOUND')));
           return;
