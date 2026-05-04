@@ -61,17 +61,16 @@ export function AuthScreen({
       <div className="auth-frame">
         <section className="auth-logo-panel" aria-label="Veritas">
           <div className="brand-mark">
-            <svg className="veritas-auth-mark" viewBox="0 0 64 64" aria-hidden="true">
-              <path
-                fill="currentColor"
-                fillRule="evenodd"
-                d="M32 6C17.64 6 6 16.75 6 30c0 5.08 1.72 9.79 4.65 13.67L6.53 58.5l15.45-5.86A27.75 27.75 0 0 0 32 54c14.36 0 26-10.75 26-24S46.36 6 32 6Zm0 7C21.56 13 13 20.6 13 30c0 4.03 1.56 7.78 4.18 10.75l1.57 1.78-1.84 6.62 6.95-2.64 2.07.74c1.91.68 3.95 1.03 6.07 1.03 10.44 0 19-7.6 19-18.28S42.44 13 32 13Z"
-              />
-            </svg>
+            <img className="veritas-auth-mark" src="/veritas-icon.svg" alt="" aria-hidden="true" />
           </div>
         </section>
 
         <form className={`auth-panel telegram-auth auth-${authMode}`} onSubmit={onAuthenticate}>
+          <div className="mobile-auth-brand" aria-label="Veritas">
+            <img src="/veritas-icon.svg" alt="" aria-hidden="true" />
+            <span>Veritas</span>
+          </div>
+
           <div className="auth-form-head">
             <strong>{title}</strong>
             <span>{hint}</span>

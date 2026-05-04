@@ -15,7 +15,7 @@ import {
   Search,
   ArrowUp,
 } from 'lucide-react';
-import { normalizeAuthEmail, validateAuthForm } from './auth.js';
+import { normalizeAuthEmail, registerProfileFromEmail, validateAuthForm } from './auth.js';
 import {
   filterChats,
   isDraftConversationId,
@@ -821,6 +821,18 @@ function App() {
     });
   }
 
+  function registerPayloadFromForm() {
+    const email = normalizeAuthEmail(authForm.email);
+    const profile = registerProfileFromEmail(email);
+    return {
+      email,
+      password: authForm.password,
+      displayName: authForm.displayName.trim() || profile.displayName,
+      handle: authForm.handle.trim() || profile.handle,
+      locale: language,
+    };
+  }
+
   async function authenticate(event) {
     event.preventDefault();
     setAuthError('');
@@ -846,13 +858,7 @@ function App() {
         return;
       }
 
-      const registerPayload = {
-        email: normalizeAuthEmail(authForm.email),
-        password: authForm.password,
-        displayName: authForm.displayName.trim(),
-        handle: authForm.handle.trim(),
-        locale: language,
-      };
+      const registerPayload = registerPayloadFromForm();
       if (authMode === 'register' && authStep !== 3) {
         const response = await fetch(`${apiUrl}/api/auth/register/request-code`, {
           method: 'POST',
@@ -944,13 +950,7 @@ function App() {
     try {
       const path = authMode === 'register' ? '/api/auth/register/request-code' : '/api/auth/password/request-code';
       const payload = authMode === 'register'
-        ? {
-            email: normalizeAuthEmail(authForm.email),
-            password: authForm.password,
-            displayName: authForm.displayName.trim(),
-            handle: authForm.handle.trim(),
-            locale: language,
-          }
+        ? registerPayloadFromForm()
         : {
             email: normalizeAuthEmail(authForm.email),
             password: authForm.password,

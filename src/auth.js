@@ -2,6 +2,41 @@ export function normalizeAuthEmail(value) {
   return String(value ?? '').trim().toLowerCase();
 }
 
+function hashEmail(value) {
+  let hash = 0;
+  for (const char of value) {
+    hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
+  }
+  return Math.abs(hash).toString(36).padStart(4, '0').slice(0, 4);
+}
+
+function titleFromEmailLocalPart(localPart) {
+  const words = localPart
+    .replace(/[^a-z0-9]+/gi, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const title = words
+    .map((word) => word.slice(0, 1).toUpperCase() + word.slice(1, 20).toLowerCase())
+    .join(' ')
+    .slice(0, 40)
+    .trim();
+  return title.length >= 2 ? title : 'Veritas User';
+}
+
+export function registerProfileFromEmail(emailValue) {
+  const email = normalizeAuthEmail(emailValue);
+  const localPart = email.split('@')[0] || 'veritas';
+  const displayName = titleFromEmailLocalPart(localPart);
+  const handleBase = localPart
+    .toLowerCase()
+    .replace(/[^a-z0-9_.]+/g, '')
+    .replace(/^[._]+|[._]+$/g, '')
+    .slice(0, 15) || 'user';
+  const handle = `${handleBase}_${hashEmail(email || handleBase)}`.slice(0, 20);
+  return { displayName, handle };
+}
+
 export function validateAuthForm(mode, form, step = null, t = (key) => key) {
   const validation = {};
   const email = normalizeAuthEmail(form.email);
@@ -28,10 +63,10 @@ export function validateAuthForm(mode, form, step = null, t = (key) => key) {
   if (shouldValidateProfile) {
     const displayName = String(form.displayName ?? '').trim();
     const handle = String(form.handle ?? '').trim();
-    if (displayName.length < 2 || displayName.length > 40) {
+    if (displayName && (displayName.length < 2 || displayName.length > 40)) {
       validation.displayName = t('auth.validationDisplayName');
     }
-    if (!/^[a-z0-9_.]{3,20}$/.test(handle)) {
+    if (handle && !/^[a-z0-9_.]{3,20}$/.test(handle)) {
       validation.handle = t('auth.validationUsername');
     }
   }
