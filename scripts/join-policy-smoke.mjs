@@ -159,6 +159,7 @@ async function main() {
       SUPABASE_URL: '',
       SUPABASE_PUBLISHABLE_KEY: '',
       VITE_SUPABASE_ANON_KEY: '',
+      VERITAS_ALLOW_DIRECT_REGISTER: 'true',
       VERITAS_KEEP_DEMO_DATA: 'false',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

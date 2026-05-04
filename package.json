@@ -16,6 +16,7 @@
     "build:pages": "vite build --base=/",
     "smoke": "node scripts/smoke.mjs",
     "smoke:join-policy": "node scripts/join-policy-smoke.mjs",
+    "smoke:reset": "node scripts/reset-password-smoke.mjs",
     "smoke:ai": "node scripts/ai-model-smoke.mjs",
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build && electron-builder --win --x64",

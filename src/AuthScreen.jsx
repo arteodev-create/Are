@@ -156,6 +156,23 @@ export function AuthScreen({
                   />
                 </label>
                 {authValidation.password && <span className="field-error">{authValidation.password}</span>}
+                {isReset && (
+                  <>
+                    <label className="floating-field">
+                      <span>{t('auth.confirmPassword')}</span>
+                      <input
+                        type="password"
+                        value={authForm.confirmPassword}
+                        onChange={(event) => onAuthFieldChange('confirmPassword', event.target.value)}
+                        placeholder={t('auth.confirmPassword')}
+                        maxLength={64}
+                        autoComplete="new-password"
+                        aria-invalid={Boolean(authValidation.confirmPassword)}
+                      />
+                    </label>
+                    {authValidation.confirmPassword && <span className="field-error">{authValidation.confirmPassword}</span>}
+                  </>
+                )}
               </>
             )}
 

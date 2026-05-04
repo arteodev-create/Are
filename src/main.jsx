@@ -40,8 +40,10 @@ import { Composer } from './Composer.jsx';
 import { I18nProvider, useI18n } from './i18n.jsx';
 import './styles.css';
 
-const apiUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:8787';
-const wsUrl = import.meta.env.VITE_WS_URL ?? apiUrl.replace(/^http/, 'ws');
+const isLocalHost = /^(localhost|127\.0\.0\.1|\[::1\])$/i.test(window.location.hostname);
+const defaultApiUrl = isLocalHost ? 'http://localhost:8787' : window.location.origin;
+const apiUrl = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/$/, '');
+const wsUrl = (import.meta.env.VITE_WS_URL || apiUrl.replace(/^http/, 'ws')).replace(/\/$/, '');
 const messagePageSize = 30;
 const maxUploadFileSize = 25 * 1024 * 1024;
 const localeByLanguage = {
@@ -58,6 +60,13 @@ function assetUrl(url = '') {
   if (!url) return '';
   if (/^(https?:|data:|blob:)/i.test(url)) return url;
   return url.startsWith('/') ? `${apiUrl}${url}` : url;
+}
+
+function shareBaseUrl() {
+  const configured = String(import.meta.env.VITE_SHARE_URL || import.meta.env.VITE_PUBLIC_APP_URL || '').trim().replace(/\/$/, '');
+  if (configured) return configured;
+  if (/localhost|127\.0\.0\.1|\[::1\]/i.test(window.location.hostname)) return apiUrl.replace(/\/$/, '');
+  return window.location.origin;
 }
 
 function fileFromDataUrl(dataUrl, name = 'veritas-gif.gif') {
@@ -465,7 +474,7 @@ function App() {
   const [sessionId, setSessionId] = useState(initialSession?.sessionId ?? '');
   const [authMode, setAuthMode] = useState('login');
   const [authStep, setAuthStep] = useState(0);
-  const [authForm, setAuthForm] = useState({ email: '', displayName: '', handle: '', password: '', emailCode: '' });
+  const [authForm, setAuthForm] = useState({ email: '', displayName: '', handle: '', password: '', confirmPassword: '', emailCode: '' });
   const [authError, setAuthError] = useState('');
   const [authSubmitting, setAuthSubmitting] = useState(false);
   const [activeChatId, setActiveChatId] = useState('');
@@ -697,6 +706,9 @@ function App() {
       if (field === 'password') {
         return { ...current, password: value.slice(0, 64) };
       }
+      if (field === 'confirmPassword') {
+        return { ...current, confirmPassword: value.slice(0, 64) };
+      }
       if (field === 'emailCode') {
         return { ...current, emailCode: value.replace(/\D/g, '').slice(0, 6) };
       }
@@ -708,7 +720,7 @@ function App() {
     setAuthMode(nextMode);
     setAuthStep(0);
     setAuthError('');
-    setAuthForm((current) => ({ ...current, emailCode: '' }));
+    setAuthForm((current) => ({ ...current, password: '', confirmPassword: '', emailCode: '' }));
   }
 
   async function readJsonSafely(response) {
@@ -754,12 +766,23 @@ function App() {
       setAuthError(firstAuthError);
       return;
     }
-    if (authMode === 'reset' && authStep < 1) {
-      setAuthStep((current) => Math.min(current + 1, 3));
-      return;
-    }
     setAuthSubmitting(true);
     try {
+      if (authMode === 'reset' && authStep === 0) {
+        const response = await fetch(`${apiUrl}/api/auth/email-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalizeAuthEmail(authForm.email) }),
+        });
+        const data = await readJsonSafely(response);
+        if (!response.ok || !data.exists) {
+          setAuthError(serverError(data?.errorCode ? data : { errorCode: 'AUTH_EMAIL_NOT_FOUND' }, t('server.AUTH_EMAIL_NOT_FOUND')));
+          return;
+        }
+        setAuthStep(1);
+        return;
+      }
+
       const registerPayload = {
         email: normalizeAuthEmail(authForm.email),
         password: authForm.password,
@@ -2911,7 +2934,7 @@ function App() {
     }
 
     const sharePath = contact?.kind && contact.kind !== 'private' ? 'c' : 'u';
-    const url = `${apiUrl}/${sharePath}/${encodeURIComponent(handle)}`;
+    const url = `${shareBaseUrl()}/${sharePath}/${encodeURIComponent(handle)}`;
     const shareNotice = contact?.type === 'profile'
       ? t('notice.shareProfileOk')
       : contact?.kind === 'channel'

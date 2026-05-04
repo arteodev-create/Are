@@ -21,7 +21,20 @@ export function isVerifiedUser(user) {
   return user?.plan === 'extra' || user?.senderPlan === 'extra' || user?.isExtra === true || user?.senderIsExtra === true;
 }
 
+function avatarSrc(src) {
+  const value = String(src ?? '').trim();
+  if (!value) return '';
+  if (/^(https?:|blob:|data:)/i.test(value)) return value;
+  const apiUrl = String(import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+  if (apiUrl && value.startsWith('/')) return `${apiUrl}${value}`;
+  return value;
+}
+
 export function Avatar({ src = '', name = '', size = 20 }) {
-  if (src) return <img className="avatar-image" src={src} alt="" />;
+  const resolvedSrc = avatarSrc(src);
+  const [failedSrc, setFailedSrc] = React.useState('');
+  if (resolvedSrc && resolvedSrc !== failedSrc) {
+    return <img className="avatar-image" src={resolvedSrc} alt="" onError={() => setFailedSrc(resolvedSrc)} />;
+  }
   return <span style={{ fontSize: Math.max(11, Math.round(size * 0.45)) }}>{(name || '?').slice(0, 1).toUpperCase()}</span>;
 }

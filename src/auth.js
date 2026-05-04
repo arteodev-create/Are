@@ -6,9 +6,11 @@ export function validateAuthForm(mode, form, step = null, t = (key) => key) {
   const validation = {};
   const email = normalizeAuthEmail(form.email);
   const password = String(form.password ?? '');
+  const confirmPassword = String(form.confirmPassword ?? '');
   const shouldValidateEmail = mode === 'login' || step === null || step >= 0;
   const shouldValidateProfile = mode === 'register';
   const shouldValidatePassword = mode === 'login' || step === null || mode === 'register' || (mode === 'reset' && step >= 1);
+  const shouldValidateConfirmPassword = mode === 'reset' && step === 1;
   const shouldValidateCode = (mode === 'register' && step === 3) || (mode === 'reset' && step === 2);
 
   if (shouldValidateEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
@@ -17,6 +19,10 @@ export function validateAuthForm(mode, form, step = null, t = (key) => key) {
 
   if (shouldValidatePassword && password.length < 6) {
     validation.password = t('auth.validationPassword');
+  }
+
+  if (shouldValidateConfirmPassword && password && confirmPassword !== password) {
+    validation.confirmPassword = t('auth.validationConfirmPassword');
   }
 
   if (shouldValidateProfile) {

@@ -58,6 +58,17 @@ async function registerOrLogin(account) {
     body: JSON.stringify(account),
   });
   if (register.response.ok) return register.data;
+  if (register.response.status === 403 && register.data.errorCode === 'AUTH_VERIFICATION_REQUIRED') {
+    const login = await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: account.email, password: account.password }),
+    });
+    if (login.response.ok) return login.data;
+    throw new Error(
+      `Register ${account.email} requires email verification and login also failed. ` +
+      'Run this smoke against a server started with VERITAS_ALLOW_DIRECT_REGISTER=true, or pre-create the smoke account.',
+    );
+  }
   if (register.response.status !== 409) {
     throw new Error(`Register ${account.email} failed: ${register.data.error || register.response.statusText}`);
   }

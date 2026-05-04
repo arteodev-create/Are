@@ -41,10 +41,17 @@ const loginAttemptLimit = 6;
 const loginAttemptWindowMs = 10 * 60 * 1000;
 const pendingEmailVerifications = new Map();
 const pendingPasswordResets = new Map();
+const capturedVerificationEmails = new Map();
 const emailVerificationTtlMs = 10 * 60 * 1000;
 const emailVerificationCooldownMs = 60 * 1000;
 const uploadDir = path.join(process.cwd(), 'uploads');
-const cloudinaryStorageEnabled = Boolean(process.env.CLOUDINARY_URL);
+const hasCloudinaryUrl = Boolean(String(process.env.CLOUDINARY_URL ?? '').trim());
+const hasCloudinaryCredentials = Boolean(
+  String(process.env.CLOUDINARY_CLOUD_NAME ?? '').trim()
+  && String(process.env.CLOUDINARY_API_KEY ?? '').trim()
+  && String(process.env.CLOUDINARY_API_SECRET ?? '').trim(),
+);
+const cloudinaryStorageEnabled = hasCloudinaryUrl || hasCloudinaryCredentials;
 const cloudinaryUploadFolder = process.env.CLOUDINARY_UPLOAD_FOLDER || 'veritas/uploads';
 const seedConversations = [];
 const keepDemoData = process.env.VERITAS_KEEP_DEMO_DATA === 'true';
@@ -53,6 +60,31 @@ const realtimePresence = new Map();
 const presenceOfflineDelayMs = 1500;
 
 fs.mkdirSync(uploadDir, { recursive: true });
+
+if (cloudinaryStorageEnabled) {
+  if (hasCloudinaryUrl) {
+    try {
+      const cloudinaryUrl = new URL(String(process.env.CLOUDINARY_URL).trim());
+      cloudinary.config({
+        cloud_name: cloudinaryUrl.hostname,
+        api_key: decodeURIComponent(cloudinaryUrl.username),
+        api_secret: decodeURIComponent(cloudinaryUrl.password),
+        secure: true,
+      });
+    } catch {
+      cloudinary.config({ secure: true });
+    }
+  } else if (hasCloudinaryCredentials) {
+    cloudinary.config({
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      api_key: process.env.CLOUDINARY_API_KEY,
+      api_secret: process.env.CLOUDINARY_API_SECRET,
+      secure: true,
+    });
+  } else {
+    cloudinary.config({ secure: true });
+  }
+}
 
 function decodeUploadName(name) {
   const rawName = String(name || 'media');
@@ -115,12 +147,13 @@ function uploadFileToCloudinary(file) {
   });
 }
 
-async function toUploadedAttachment(file) {
+async function toUploadedAttachment(file, request) {
   if (!cloudinaryStorageEnabled) {
+    const localUrl = `/uploads/${file.filename}`;
     return {
       id: crypto.randomUUID(),
       name: decodeUploadName(file.originalname),
-      url: `/uploads/${file.filename}`,
+      url: request ? absoluteUrl(request, localUrl) : localUrl,
       mimeType: file.mimetype,
       size: file.size,
     };
@@ -171,6 +204,7 @@ const memory = {
 memory.conversations = [];
 
 function inferErrorCode(error) {
+  if (error?.errorCode) return error.errorCode;
   if (error?.code === 'LIMIT_FILE_SIZE') return 'UPLOAD_FILE_TOO_LARGE';
   if (error?.code === 'LIMIT_FILE_COUNT') return 'UPLOAD_TOO_MANY_FILES';
   if (error?.code === 'LIMIT_UNEXPECTED_FILE') return 'UPLOAD_INVALID';
@@ -246,6 +280,21 @@ function inferErrorCode(error) {
   if (error?.status === 404) return 'NOT_FOUND';
   if (error?.status === 429) return 'RATE_LIMITED';
   return 'SERVER_ERROR';
+}
+
+function httpError(message, status, errorCode) {
+  const error = new Error(message);
+  error.status = status;
+  error.errorCode = errorCode;
+  return error;
+}
+
+function isUniqueViolation(error) {
+  return error?.code === '23505';
+}
+
+function canUseDirectRegister() {
+  return !hasDatabase && process.env.VERITAS_ALLOW_DIRECT_REGISTER === 'true';
 }
 
 function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
@@ -360,6 +409,34 @@ function emailCodeCellsHtml(code) {
                     <td align="center" style="width:48px;height:56px;border:1px solid #d9dee7;border-radius:12px;background:#f8fafc;color:#0b1220;font-family:'SFMono-Regular',Consolas,'Liberation Mono',monospace;font-size:28px;font-weight:800;line-height:56px;">
                       ${escapeEmailHtml(digit)}
                     </td>`).join('');
+}
+
+function isEmailCaptureEnabled() {
+  return !hasDatabase && process.env.VERITAS_EMAIL_CAPTURE === 'true';
+}
+
+function captureVerificationEmail(email, code, purpose, recipientName) {
+  const key = `${verificationKey(email)}:${purpose}`;
+  capturedVerificationEmails.set(key, {
+    email: verificationKey(email),
+    code,
+    purpose,
+    recipientName,
+    sentAt: new Date().toISOString(),
+  });
+}
+
+function getCapturedVerificationEmail(input) {
+  if (!isEmailCaptureEnabled()) {
+    throw httpError('Email capture is disabled', 404, 'NOT_FOUND');
+  }
+  const email = verificationKey(input?.email);
+  const purpose = String(input?.purpose ?? 'register');
+  const item = capturedVerificationEmails.get(`${email}:${purpose}`);
+  if (!email || !item) {
+    throw httpError('Captured email code not found', 404, 'NOT_FOUND');
+  }
+  return item;
 }
 
 function verificationEmailCopy(purpose, locale) {
@@ -509,6 +586,10 @@ function verificationEmailHtml(copy, code, recipientName) {
 }
 
 async function sendVerificationEmail(email, code, purpose = 'register', locale = 'vi', recipientName = '') {
+  if (isEmailCaptureEnabled()) {
+    captureVerificationEmail(email, code, purpose, recipientName || email);
+    return;
+  }
   const mailer = makeMailer();
   if (!mailer) {
     const error = new Error('Chưa cấu hình SMTP để gửi mã xác nhận email');
@@ -794,8 +875,7 @@ function renderVeritasSharePage({
   const safeAvatarUrl = escapeHtml(avatarUrl);
   const safeName = escapeHtml(name);
   const safeHandle = escapeHtml(handle);
-  const safePublicAppUrl = escapeHtml(publicAppUrl);
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=112x112&margin=0&data=${encodeURIComponent(publicAppUrl)}`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=112x112&margin=0&data=${encodeURIComponent(pageUrl)}`;
   const initial = escapeHtml(String(name || 'V').slice(0, 1).toUpperCase());
   const avatar = avatarUrl
     ? `<img src="${safeAvatarUrl}" alt="${safeName}">`
@@ -860,10 +940,10 @@ function renderVeritasSharePage({
           <a class="ghost" href="${safePageUrl}">${escapeHtml(secondaryCta)}</a>
         </div>
       </main>
-      <a class="download-qr" href="${safePublicAppUrl}" aria-label="Tai Veritas bang QR">
-        <img src="${escapeHtml(qrImageUrl)}" alt="QR download Veritas">
-        <strong>Tai Veritas</strong>
-        <span>Quet de mo app</span>
+      <a class="download-qr" href="${safePageUrl}" aria-label="Mo lien ket Veritas bang QR">
+        <img src="${escapeHtml(qrImageUrl)}" alt="QR Veritas profile link">
+        <strong>Share this link</strong>
+        <span>Scan to open this Veritas page</span>
       </a>
     </div>
   </div>
@@ -1064,6 +1144,10 @@ async function initializeDatabase() {
     alter table veritas_users add column if not exists latitude double precision;
     alter table veritas_users add column if not exists longitude double precision;
     alter table veritas_users add column if not exists last_seen timestamptz;
+
+    create unique index if not exists veritas_users_email_unique_idx
+      on veritas_users (lower(email))
+      where email is not null and email <> '';
 
     create table if not exists veritas_conversations (
       id uuid primary key,
@@ -1383,6 +1467,7 @@ async function authMiddleware(request, response, next) {
       request.path === '/api/auth/register' ||
       request.path === '/api/auth/register/request-code' ||
       request.path === '/api/auth/register/verify' ||
+      request.path === '/api/auth/email-status' ||
       request.path === '/api/auth/password/request-code' ||
       request.path === '/api/auth/password/verify' ||
       request.path === '/api/auth/login' ||
@@ -1418,18 +1503,35 @@ async function registerUser(input) {
   const email = normalizeEmail(input?.email);
   const password = String(input?.password ?? '');
   if (!displayName || !handle || !email || password.length < 6) {
-    const error = new Error('Tên hiển thị, email, tên người dùng và mật khẩu ít nhất 6 ký tự là bắt buộc');
-    error.status = 400;
-    throw error;
+    throw httpError(
+      'Display name, email, username, and a password of at least 6 characters are required',
+      400,
+      'AUTH_REGISTER_REQUIRED',
+    );
   }
 
   const { hash, salt } = hashPassword(password);
+  return registerUserWithPasswordHash({ displayName, handle, email, passwordHash: hash, passwordSalt: salt });
+}
+
+async function registerUserWithPasswordHash(input) {
+  const displayName = String(input?.displayName ?? '').trim();
+  const handle = normalizeHandle(input?.handle);
+  const email = normalizeEmail(input?.email);
+  const hash = String(input?.passwordHash ?? '');
+  const salt = String(input?.passwordSalt ?? '');
+  if (!displayName || !handle || !email || !hash || !salt) {
+    throw httpError(
+      'Display name, email, username, and a password of at least 6 characters are required',
+      400,
+      'AUTH_REGISTER_REQUIRED',
+    );
+  }
+
   if (!pool) {
     const exists = memory.users.find((user) => user.handle === handle || user.email === email);
     if (exists) {
-      const error = new Error('Email hoặc tên người dùng đã tồn tại');
-      error.status = 409;
-      throw error;
+      throw httpError('Email or username already exists', 409, 'AUTH_ACCOUNT_EXISTS');
     }
     const user = {
       id: crypto.randomUUID(),
@@ -1451,34 +1553,35 @@ async function registerUser(input) {
     [handle, email],
   );
   if (existing.rows.length) {
-    const error = new Error('Email hoặc tên người dùng đã tồn tại');
-    error.status = 409;
+    throw httpError('Email or username already exists', 409, 'AUTH_ACCOUNT_EXISTS');
+  }
+  try {
+    const { rows } = await pool.query(
+      `insert into veritas_users (id, display_name, handle, email, password_hash, password_salt)
+       values ($1, $2, $3, $4, $5, $6)
+       returning id, display_name, handle, email, avatar_url, bio, privacy_level, plan, last_seen`,
+      [crypto.randomUUID(), displayName, handle, email, hash, salt],
+    );
+    return toUser(rows[0]);
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      throw httpError('Email or username already exists', 409, 'AUTH_ACCOUNT_EXISTS');
+    }
     throw error;
   }
-  const { rows } = await pool.query(
-    `insert into veritas_users (id, display_name, handle, email, password_hash, password_salt)
-     values ($1, $2, $3, $4, $5, $6)
-     returning id, display_name, handle, email, avatar_url, bio, privacy_level, plan, last_seen`,
-    [crypto.randomUUID(), displayName, handle, email, hash, salt],
-  );
-  return toUser(rows[0]);
 }
 
 async function ensureRegisterAvailable(input) {
   const handle = normalizeHandle(input?.handle);
   const email = normalizeEmail(input?.email);
   if (!handle || !email) {
-    const error = new Error('Email và tên người dùng là bắt buộc');
-    error.status = 400;
-    throw error;
+    throw httpError('Email and username are required', 400, 'AUTH_EMAIL_USERNAME_REQUIRED');
   }
 
   if (!pool) {
     const exists = memory.users.find((user) => user.handle === handle || user.email === email);
     if (exists) {
-      const error = new Error('Email hoặc tên người dùng đã tồn tại');
-      error.status = 409;
-      throw error;
+      throw httpError('Email or username already exists', 409, 'AUTH_ACCOUNT_EXISTS');
     }
     return;
   }
@@ -1488,9 +1591,7 @@ async function ensureRegisterAvailable(input) {
     [handle, email],
   );
   if (existing.rows.length) {
-    const error = new Error('Email hoặc tên người dùng đã tồn tại');
-    error.status = 409;
-    throw error;
+    throw httpError('Email or username already exists', 409, 'AUTH_ACCOUNT_EXISTS');
   }
 }
 
@@ -1501,9 +1602,11 @@ async function requestRegisterCode(input) {
   const password = String(input?.password ?? '');
   const locale = normalizeLocale(input?.locale);
   if (!displayName || !handle || !email || password.length < 6) {
-    const error = new Error('Tên hiển thị, email, tên người dùng và mật khẩu ít nhất 6 ký tự là bắt buộc');
-    error.status = 400;
-    throw error;
+    throw httpError(
+      'Display name, email, username, and a password of at least 6 characters are required',
+      400,
+      'AUTH_REGISTER_REQUIRED',
+    );
   }
 
   await ensureRegisterAvailable({ handle, email });
@@ -1511,15 +1614,20 @@ async function requestRegisterCode(input) {
   const key = verificationKey(email);
   const current = pendingEmailVerifications.get(key);
   if (current && Date.now() - current.sentAt < emailVerificationCooldownMs) {
-    const error = new Error('Vui lòng đợi 60 giây trước khi gửi lại mã');
-    error.status = 429;
-    throw error;
+    throw httpError('Please wait 60 seconds before requesting another code', 429, 'AUTH_CODE_COOLDOWN');
   }
 
   const code = generateEmailCode();
+  const passwordDigest = hashPassword(password);
   const pending = {
     codeHash: hashEmailCode(code),
-    input: { displayName, handle, email, password },
+    input: {
+      displayName,
+      handle,
+      email,
+      passwordHash: passwordDigest.hash,
+      passwordSalt: passwordDigest.salt,
+    },
     attempts: 0,
     sentAt: Date.now(),
     expiresAt: Date.now() + emailVerificationTtlMs,
@@ -1536,20 +1644,16 @@ async function verifyRegisterCode(input) {
   const pending = pendingEmailVerifications.get(key);
   if (!pending || Date.now() > pending.expiresAt) {
     pendingEmailVerifications.delete(key);
-    const error = new Error('Mã xác nhận đã hết hạn, vui lòng gửi lại mã');
-    error.status = 400;
-    throw error;
+    throw httpError('Verification code expired. Please request a new code', 400, 'AUTH_CODE_EXPIRED');
   }
   if (code.length !== 6 || hashEmailCode(code) !== pending.codeHash) {
     pending.attempts += 1;
     if (pending.attempts >= 5) pendingEmailVerifications.delete(key);
-    const error = new Error('Mã xác nhận không đúng');
-    error.status = 400;
-    throw error;
+    throw httpError('Verification code is incorrect', 400, 'AUTH_INVALID_CODE');
   }
 
   pendingEmailVerifications.delete(key);
-  return registerUser(pending.input);
+  return registerUserWithPasswordHash(pending.input);
 }
 
 async function findPasswordUserByEmail(email) {
@@ -1560,8 +1664,28 @@ async function findPasswordUserByEmail(email) {
   return rows[0] ?? null;
 }
 
+async function requirePasswordUserByEmail(email) {
+  const user = await findPasswordUserByEmail(email);
+  if (!user) {
+    throw httpError('Email does not exist', 404, 'AUTH_EMAIL_NOT_FOUND');
+  }
+  return user;
+}
+
+async function checkAuthEmail(input) {
+  const email = normalizeEmail(input?.email);
+  if (!email) {
+    throw httpError('Email does not exist', 404, 'AUTH_EMAIL_NOT_FOUND');
+  }
+  return { exists: Boolean(await findPasswordUserByEmail(email)) };
+}
+
 async function updateUserPassword(userId, password) {
   const { hash, salt } = hashPassword(password);
+  return updateUserPasswordHash(userId, hash, salt);
+}
+
+async function updateUserPasswordHash(userId, hash, salt) {
   if (!pool) {
     const user = memory.users.find((item) => item.id === userId);
     if (!user) {
@@ -1593,31 +1717,24 @@ async function requestPasswordResetCode(input) {
   const password = String(input?.password ?? '');
   const locale = normalizeLocale(input?.locale);
   if (!email || password.length < 6) {
-    const error = new Error('Email và mật khẩu mới ít nhất 6 ký tự là bắt buộc');
-    error.status = 400;
-    throw error;
+    throw httpError('Email and a new password of at least 6 characters are required', 400, 'AUTH_RESET_REQUIRED');
   }
 
-  const user = await findPasswordUserByEmail(email);
-  if (!user) {
-    const error = new Error('Email không tồn tại');
-    error.status = 404;
-    throw error;
-  }
+  const user = await requirePasswordUserByEmail(email);
 
   const key = verificationKey(email);
   const current = pendingPasswordResets.get(key);
   if (current && Date.now() - current.sentAt < emailVerificationCooldownMs) {
-    const error = new Error('Vui lòng đợi 60 giây trước khi gửi lại mã');
-    error.status = 429;
-    throw error;
+    throw httpError('Please wait 60 seconds before requesting another code', 429, 'AUTH_CODE_COOLDOWN');
   }
 
   const code = generateEmailCode();
+  const passwordDigest = hashPassword(password);
   const pending = {
     codeHash: hashEmailCode(code),
     userId: user.id,
-    password,
+    passwordHash: passwordDigest.hash,
+    passwordSalt: passwordDigest.salt,
     attempts: 0,
     sentAt: Date.now(),
     expiresAt: Date.now() + emailVerificationTtlMs,
@@ -1634,20 +1751,16 @@ async function verifyPasswordResetCode(input) {
   const pending = pendingPasswordResets.get(key);
   if (!pending || Date.now() > pending.expiresAt) {
     pendingPasswordResets.delete(key);
-    const error = new Error('Mã xác nhận đã hết hạn, vui lòng gửi lại mã');
-    error.status = 400;
-    throw error;
+    throw httpError('Verification code expired. Please request a new code', 400, 'AUTH_CODE_EXPIRED');
   }
   if (code.length !== 6 || hashEmailCode(code) !== pending.codeHash) {
     pending.attempts += 1;
     if (pending.attempts >= 5) pendingPasswordResets.delete(key);
-    const error = new Error('Mã xác nhận không đúng');
-    error.status = 400;
-    throw error;
+    throw httpError('Verification code is incorrect', 400, 'AUTH_INVALID_CODE');
   }
 
   pendingPasswordResets.delete(key);
-  const user = await updateUserPassword(pending.userId, pending.password);
+  const user = await updateUserPasswordHash(pending.userId, pending.passwordHash, pending.passwordSalt);
   await revokeAllSessions(user.id);
   return user;
 }
@@ -1660,11 +1773,13 @@ async function loginUser(input) {
 
   if (!pool) {
     const user = memory.users.find((item) => item.handle === handle || item.email === email);
-    if (!user || !user.passwordHash || !user.passwordSalt || !verifyPassword(password, user)) {
+    if (!user) {
       recordLoginFailure(input);
-      const error = new Error('Email hoặc mật khẩu không đúng');
-      error.status = 401;
-      throw error;
+      throw httpError('Email does not exist', 404, 'AUTH_EMAIL_NOT_FOUND');
+    }
+    if (!user.passwordHash || !user.passwordSalt || !verifyPassword(password, user)) {
+      recordLoginFailure(input);
+      throw httpError('Email or password is incorrect', 401, 'AUTH_INVALID_CREDENTIALS');
     }
     clearLoginFailures(input);
     return toUser(user);
@@ -1672,11 +1787,13 @@ async function loginUser(input) {
 
   const { rows } = await pool.query('select * from veritas_users where handle = $1 or email = $2', [handle, email]);
   const user = rows[0];
-  if (!user || !user.password_hash || !user.password_salt || !verifyPassword(password, user)) {
+  if (!user) {
     recordLoginFailure(input);
-    const error = new Error('Email hoặc mật khẩu không đúng');
-    error.status = 401;
-    throw error;
+    throw httpError('Email does not exist', 404, 'AUTH_EMAIL_NOT_FOUND');
+  }
+  if (!user.password_hash || !user.password_salt || !verifyPassword(password, user)) {
+    recordLoginFailure(input);
+    throw httpError('Email or password is incorrect', 401, 'AUTH_INVALID_CREDENTIALS');
   }
   clearLoginFailures(input);
   return toUser(user);
@@ -4129,6 +4246,9 @@ app.get('/api/readiness', async (_request, response) => {
 
 app.post('/api/auth/register', async (request, response, next) => {
   try {
+    if (!canUseDirectRegister(request.body)) {
+      throw httpError('Email verification is required to create an account', 403, 'AUTH_VERIFICATION_REQUIRED');
+    }
     const user = await registerUser(request.body);
     response.status(201).json(await createAuthSession(user, request));
   } catch (error) {
@@ -4148,6 +4268,22 @@ app.post('/api/auth/register/verify', async (request, response, next) => {
   try {
     const user = await verifyRegisterCode(request.body);
     response.status(201).json(await createAuthSession(user, request));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/auth/email-status', async (request, response, next) => {
+  try {
+    response.json(await checkAuthEmail(request.body));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/dev/email-code', async (request, response, next) => {
+  try {
+    response.json(getCapturedVerificationEmail(request.body));
   } catch (error) {
     next(error);
   }
@@ -4298,7 +4434,7 @@ app.post('/api/uploads', (request, response, next) => {
       return;
     }
     try {
-      const attachments = await Promise.all(files.map(toUploadedAttachment));
+      const attachments = await Promise.all(files.map((file) => toUploadedAttachment(file, request)));
       response.status(201).json(attachments);
     } catch (uploadError) {
       next(uploadError);
