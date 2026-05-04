@@ -24,8 +24,13 @@ export function AuthScreen({
   }
 
   const isRegister = authMode === 'register';
+  const isLogin = authMode === 'login';
   const isReset = authMode === 'reset';
   const isRegisterCodeStep = isRegister && authStep === 3;
+  const loginSteps = [
+    t('auth.stepEmail'),
+    t('auth.stepPassword'),
+  ];
   const resetSteps = [
     t('auth.stepEmail'),
     t('auth.stepPassword'),
@@ -35,8 +40,8 @@ export function AuthScreen({
   const hint = authMode === 'login' ? t('auth.loginHint') : isRegister ? t('auth.registerHint') : t('auth.resetHint');
   const submitLabel = authSubmitting
     ? t('common.loading')
-    : authMode === 'login'
-      ? t('auth.login')
+    : isLogin
+      ? authStep === 0 ? t('common.next') : t('auth.login')
       : isReset && authStep < 1
         ? t('common.next')
         : (isRegister && !isRegisterCodeStep) || (isReset && authStep === 1)
@@ -76,9 +81,9 @@ export function AuthScreen({
             <span>{hint}</span>
           </div>
 
-          {isReset && (
-            <div className="auth-flow three" aria-label={t('auth.registerProgress')}>
-              {resetSteps.map((label, index) => (
+          {(isLogin || isReset) && (
+            <div className={`auth-flow ${isReset ? 'three' : 'two'}`} aria-label={t('auth.registerProgress')}>
+              {(isLogin ? loginSteps : resetSteps).map((label, index) => (
                 <span key={label} className={index === authStep ? 'active' : index < authStep ? 'done' : ''}>
                   {label}
                 </span>
@@ -87,7 +92,7 @@ export function AuthScreen({
           )}
 
           <div className="auth-step-body">
-            {(authMode === 'login' || (isRegister && !isRegisterCodeStep) || (isReset && authStep === 0)) && (
+            {((isLogin && authStep === 0) || (isRegister && !isRegisterCodeStep) || (isReset && authStep === 0)) && (
               <>
                 <label className="floating-field">
                   <span>{t('auth.email')}</span>
@@ -140,7 +145,7 @@ export function AuthScreen({
               </>
             )}
 
-            {(authMode === 'login' || (isRegister && !isRegisterCodeStep) || (isReset && authStep === 1)) && (
+            {((isLogin && authStep === 1) || (isRegister && !isRegisterCodeStep) || (isReset && authStep === 1)) && (
               <>
                 <label className="floating-field">
                   <span>{isReset ? t('auth.newPassword') : t('auth.password')}</span>
@@ -209,13 +214,13 @@ export function AuthScreen({
           </button>
 
           <div className="auth-secondary-actions">
-            {authMode !== 'login' && authStep > 0 && (
+            {authStep > 0 && (
               <button className="auth-back-link" type="button" onClick={() => onAuthStepChange(isRegister ? 0 : Math.max(0, authStep - 1))}>
                 {t('common.back')}
               </button>
             )}
 
-            {authMode === 'login' && (
+            {isLogin && (
               <button className="auth-back-link" type="button" onClick={() => switchMode('reset')}>
                 {t('auth.forgotPassword')}
               </button>

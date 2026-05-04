@@ -738,7 +738,7 @@ function App() {
   const filteredChats = useMemo(() => filterChats(visibleChats, searchQuery), [visibleChats, searchQuery]);
 
   const authValidation = useMemo(
-    () => validateAuthForm(authMode, authForm, authMode === 'login' ? null : authStep, t),
+    () => validateAuthForm(authMode, authForm, authStep, t),
     [authMode, authForm, authStep, t],
   );
   const firstAuthError = Object.values(authValidation).find(Boolean) ?? '';
@@ -843,6 +843,21 @@ function App() {
     }
     setAuthSubmitting(true);
     try {
+      if (authMode === 'login' && authStep === 0) {
+        const response = await fetch(`${apiUrl}/api/auth/email-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: normalizeAuthEmail(authForm.email) }),
+        });
+        const data = await readJsonSafely(response);
+        if (!response.ok || !data.exists) {
+          setAuthError(serverError(data?.errorCode ? data : { errorCode: 'AUTH_EMAIL_NOT_FOUND' }, t('server.AUTH_EMAIL_NOT_FOUND')));
+          return;
+        }
+        setAuthStep(1);
+        return;
+      }
+
       if (authMode === 'reset' && authStep === 0) {
         const response = await fetch(`${apiUrl}/api/auth/email-status`, {
           method: 'POST',

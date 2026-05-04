@@ -44,7 +44,9 @@ export function validateAuthForm(mode, form, step = null, t = (key) => key) {
   const confirmPassword = String(form.confirmPassword ?? '');
   const shouldValidateEmail = mode === 'login' || step === null || step >= 0;
   const shouldValidateProfile = mode === 'register';
-  const shouldValidatePassword = mode === 'login' || step === null || mode === 'register' || (mode === 'reset' && step >= 1);
+  const shouldValidatePassword = mode === 'login'
+    ? step === null || step >= 1
+    : step === null || mode === 'register' || (mode === 'reset' && step >= 1);
   const shouldValidateConfirmPassword = mode === 'reset' && step === 1;
   const shouldValidateCode = (mode === 'register' && step === 3) || (mode === 'reset' && step === 2);
 
