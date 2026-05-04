@@ -1460,19 +1460,21 @@ async function verifyRealtimeUser(token) {
   return null;
 }
 
+const PUBLIC_API_PATHS = new Set([
+  '/api/health',
+  '/api/auth/register',
+  '/api/auth/register/request-code',
+  '/api/auth/register/verify',
+  '/api/auth/email-status',
+  '/api/auth/password/request-code',
+  '/api/auth/password/verify',
+  '/api/auth/login',
+  '/api/auth/refresh',
+]);
+
 async function authMiddleware(request, response, next) {
   try {
-    const publicPath =
-      request.path === '/api/health' ||
-      request.path === '/api/auth/register' ||
-      request.path === '/api/auth/register/request-code' ||
-      request.path === '/api/auth/register/verify' ||
-      request.path === '/api/auth/email-status' ||
-      request.path === '/api/auth/password/request-code' ||
-      request.path === '/api/auth/password/verify' ||
-      request.path === '/api/auth/login' ||
-      request.path === '/api/auth/refresh' ||
-      request.method === 'OPTIONS';
+    const publicPath = PUBLIC_API_PATHS.has(request.originalUrl.split('?')[0]) || request.method === 'OPTIONS';
     if (publicPath) return next();
 
     const localUser = verifyLocalAccessToken(tokenFromRequest(request));
