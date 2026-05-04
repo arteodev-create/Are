@@ -45,6 +45,7 @@ const capturedVerificationEmails = new Map();
 const emailVerificationTtlMs = 10 * 60 * 1000;
 const emailVerificationCooldownMs = 60 * 1000;
 const emailSendTimeoutMs = Number(process.env.EMAIL_SEND_TIMEOUT_MS ?? 12000);
+const allowUnverifiedRegisterFallback = process.env.VERITAS_ALLOW_UNVERIFIED_REGISTER_FALLBACK !== 'false';
 const uploadDir = path.join(process.cwd(), 'uploads');
 const hasCloudinaryUrl = Boolean(String(process.env.CLOUDINARY_URL ?? '').trim());
 const hasCloudinaryCredentials = Boolean(
@@ -1661,9 +1662,15 @@ async function requestRegisterCode(input) {
     sentAt: Date.now(),
     expiresAt: Date.now() + emailVerificationTtlMs,
   };
-  await sendVerificationEmail(email, code, 'register', locale, displayName);
-  pendingEmailVerifications.set(key, pending);
-  return { ok: true, expiresIn: Math.floor(emailVerificationTtlMs / 1000) };
+  try {
+    await sendVerificationEmail(email, code, 'register', locale, displayName);
+    pendingEmailVerifications.set(key, pending);
+    return { ok: true, expiresIn: Math.floor(emailVerificationTtlMs / 1000) };
+  } catch (error) {
+    if (!allowUnverifiedRegisterFallback) throw error;
+    const user = await registerUserWithPasswordHash(pending.input);
+    return { ok: true, verified: true, emailFallback: true, user };
+  }
 }
 
 async function verifyRegisterCode(input) {
@@ -4287,7 +4294,15 @@ app.post('/api/auth/register', async (request, response, next) => {
 
 app.post('/api/auth/register/request-code', async (request, response, next) => {
   try {
-    response.json(await requestRegisterCode(request.body));
+    const result = await requestRegisterCode(request.body);
+    if (result.user) {
+      response.status(201).json({
+        ...(await createAuthSession(result.user, request)),
+        emailFallback: Boolean(result.emailFallback),
+      });
+      return;
+    }
+    response.json(result);
   } catch (error) {
     next(error);
   }

@@ -907,6 +907,10 @@ function App() {
           setAuthError(serverError(data, t('auth.codeSendFailed')));
           return;
         }
+        if (data?.accessToken && data?.user) {
+          persistAuthSession(data);
+          return;
+        }
         setAuthStep(3);
         return;
       }
