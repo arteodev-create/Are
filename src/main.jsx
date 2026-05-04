@@ -804,6 +804,24 @@ function App() {
     return data?.error || fallback;
   }
 
+  async function authFetch(path, options = {}) {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      return await fetch(`${apiUrl}${path}`, {
+        ...options,
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === 'AbortError') {
+        throw new Error(t('auth.requestTimeout'));
+      }
+      throw error;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
   function persistAuthSession(data) {
     localStorage.setItem('veritas-session', JSON.stringify(data));
     setAccessToken(data.accessToken);
@@ -844,7 +862,7 @@ function App() {
     setAuthSubmitting(true);
     try {
       if (authMode === 'login' && authStep === 0) {
-        const response = await fetch(`${apiUrl}/api/auth/email-status`, {
+        const response = await authFetch('/api/auth/email-status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: normalizeAuthEmail(authForm.email) }),
@@ -863,7 +881,7 @@ function App() {
       }
 
       if (authMode === 'reset' && authStep === 0) {
-        const response = await fetch(`${apiUrl}/api/auth/email-status`, {
+        const response = await authFetch('/api/auth/email-status', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email: normalizeAuthEmail(authForm.email) }),
@@ -879,7 +897,7 @@ function App() {
 
       const registerPayload = registerPayloadFromForm();
       if (authMode === 'register' && authStep !== 3) {
-        const response = await fetch(`${apiUrl}/api/auth/register/request-code`, {
+        const response = await authFetch('/api/auth/register/request-code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(registerPayload),
@@ -893,7 +911,7 @@ function App() {
         return;
       }
       if (authMode === 'reset' && authStep === 1) {
-        const response = await fetch(`${apiUrl}/api/auth/password/request-code`, {
+        const response = await authFetch('/api/auth/password/request-code', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -919,7 +937,7 @@ function App() {
       const payload = authMode === 'login'
         ? { email: normalizeAuthEmail(authForm.email), password: authForm.password }
         : { email: normalizeAuthEmail(authForm.email), code: authForm.emailCode };
-      const response = await fetch(`${apiUrl}${path}`, {
+      const response = await authFetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -975,7 +993,7 @@ function App() {
             password: authForm.password,
             locale: language,
           };
-      const response = await fetch(`${apiUrl}${path}`, {
+      const response = await authFetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),

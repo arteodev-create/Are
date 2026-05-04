@@ -44,6 +44,7 @@ const pendingPasswordResets = new Map();
 const capturedVerificationEmails = new Map();
 const emailVerificationTtlMs = 10 * 60 * 1000;
 const emailVerificationCooldownMs = 60 * 1000;
+const emailSendTimeoutMs = Number(process.env.EMAIL_SEND_TIMEOUT_MS ?? 12000);
 const uploadDir = path.join(process.cwd(), 'uploads');
 const hasCloudinaryUrl = Boolean(String(process.env.CLOUDINARY_URL ?? '').trim());
 const hasCloudinaryCredentials = Boolean(
@@ -378,6 +379,9 @@ function makeMailer() {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 465),
     secure: String(process.env.SMTP_SECURE ?? 'true') === 'true',
+    connectionTimeout: emailSendTimeoutMs,
+    greetingTimeout: emailSendTimeoutMs,
+    socketTimeout: emailSendTimeoutMs,
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS,
@@ -598,13 +602,17 @@ async function sendVerificationEmail(email, code, purpose = 'register', locale =
   }
   const copy = verificationEmailCopy(purpose, locale);
   const name = recipientName || email;
-  await mailer.sendMail({
-    from: process.env.EMAIL_FROM || 'Veritas <noreply@example.com>',
-    to: email,
-    subject: copy.subject,
-    text: copy.text(code, name),
-    html: verificationEmailHtml(copy, code, name),
-  });
+  try {
+    await mailer.sendMail({
+      from: process.env.EMAIL_FROM || 'Veritas <noreply@example.com>',
+      to: email,
+      subject: copy.subject,
+      text: copy.text(code, name),
+      html: verificationEmailHtml(copy, code, name),
+    });
+  } catch (error) {
+    throw httpError(error?.message || 'Could not send verification email', 503, 'AUTH_EMAIL_SEND_FAILED');
+  }
 }
 
 function makeHandle(name, kind) {
