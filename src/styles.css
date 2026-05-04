@@ -7079,3 +7079,146 @@ textarea {
   }
 }
 
+@media (max-width: 760px) {
+  html.native-android-app,
+  html.native-android-app body {
+    overflow: hidden;
+    overscroll-behavior: none;
+    background: #f2f4f7;
+  }
+
+  html.native-android-app .app-shell {
+    width: 100%;
+    max-width: none;
+    background: #f2f4f7;
+  }
+
+  html.native-android-app .sidebar,
+  html.native-android-app .conversation {
+    background: #f2f4f7;
+  }
+
+  html.native-android-app .topbar,
+  html.native-android-app .conversation-header {
+    min-height: 64px;
+    padding: max(10px, env(safe-area-inset-top)) 12px 10px;
+    background: #ffffff;
+  }
+
+  html.native-android-app .topbar .icon-button,
+  html.native-android-app .conversation-header .icon-button,
+  html.native-android-app .drawer-close-button {
+    width: 44px;
+    height: 44px;
+    border-radius: 16px;
+    background: #f4f6f8;
+    color: #111111;
+  }
+
+  html.native-android-app .search-box {
+    min-height: 48px;
+    margin: 10px 12px 8px;
+    border: 0;
+    border-radius: 16px;
+    background: #ffffff;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+  }
+
+  html.native-android-app .chat-list {
+    padding: 4px 8px calc(84px + env(safe-area-inset-bottom));
+  }
+
+  html.native-android-app .chat-section-title {
+    padding: 12px 12px 4px;
+  }
+
+  html.native-android-app .chat-preview {
+    min-height: 72px;
+    margin: 6px 4px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+  }
+
+  html.native-android-app .chat-preview.selected {
+    background: #111111;
+    color: #ffffff;
+  }
+
+  html.native-android-app .chat-preview.selected .chat-subtitle,
+  html.native-android-app .chat-preview.selected .chat-time {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  html.native-android-app .new-chat {
+    right: 14px;
+    bottom: max(14px, env(safe-area-inset-bottom));
+    left: 14px;
+    min-height: 54px;
+    max-height: 54px;
+    border-radius: 18px;
+    box-shadow: 0 16px 36px rgba(17, 24, 39, 0.22);
+  }
+
+  html.native-android-app .message-list {
+    padding: 12px 12px calc(66px + 18px + env(safe-area-inset-bottom));
+    background: #f2f4f7;
+  }
+
+  html.native-android-app .message-content {
+    border-radius: 18px;
+  }
+
+  html.native-android-app .composer {
+    min-height: 66px;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: 8px;
+    padding: 10px 10px max(10px, env(safe-area-inset-bottom));
+    border-top: 0;
+    background: #ffffff;
+    box-shadow: 0 -10px 30px rgba(15, 23, 42, 0.08);
+  }
+
+  html.native-android-app .composer .emoji-toggle-button,
+  html.native-android-app .composer .mic-button {
+    display: none;
+  }
+
+  html.native-android-app .composer .icon-button,
+  html.native-android-app .send-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    border-radius: 16px;
+  }
+
+  html.native-android-app .composer input[type="text"],
+  html.native-android-app .composer > input:not(.media-file-input) {
+    min-height: 44px;
+    border-radius: 16px;
+    background: #f4f6f8;
+    font-size: 16px;
+  }
+
+  html.native-android-app .main-drawer {
+    background: #ffffff;
+  }
+
+  html.native-android-app .drawer-profile {
+    min-height: 82px;
+    padding-right: 64px;
+  }
+
+  html.native-android-app .drawer-menu {
+    padding: 10px 18px;
+  }
+
+  html.native-android-app .drawer-menu button {
+    min-height: 56px;
+    border-radius: 16px;
+    font-size: 16px;
+  }
+}
+

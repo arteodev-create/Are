@@ -45,6 +45,11 @@ const productionApiUrl = 'https://veritas-api-production-4255.up.railway.app';
 const defaultApiUrl = isLocalHost ? 'http://localhost:8787' : productionApiUrl;
 const apiUrl = (import.meta.env.VITE_API_URL || defaultApiUrl).replace(/\/$/, '');
 const wsUrl = (import.meta.env.VITE_WS_URL || apiUrl.replace(/^http/, 'ws')).replace(/\/$/, '');
+const nativePlatform = window.Capacitor?.getPlatform?.() || '';
+const isNativeAndroidApp = nativePlatform === 'android'
+  || (/Android/i.test(navigator.userAgent) && /\bwv\b/i.test(navigator.userAgent));
+document.documentElement.classList.toggle('native-android-app', isNativeAndroidApp);
+document.documentElement.classList.toggle('native-webview-app', Boolean(nativePlatform) || /\bwv\b/i.test(navigator.userAgent));
 const messagePageSize = 30;
 const maxUploadFileSize = 25 * 1024 * 1024;
 const localeByLanguage = {
