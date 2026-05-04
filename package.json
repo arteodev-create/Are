@@ -22,9 +22,10 @@
     "desktop:pack": "npm run build && electron-builder --win --x64",
     "mobile:sync": "npm run build && cap sync android",
     "mobile:apk": "npm run mobile:sync && cd mobile/android && gradlew.bat assembleDebug",
-    "preview": "vite preview --host 0.0.0.0",
+    "preview": "npm run build && wrangler dev",
     "pwa:build": "vite build",
-    "pwa:preview": "vite preview --host 0.0.0.0 --port 4173"
+    "pwa:preview": "vite preview --host 0.0.0.0 --port 4173",
+    "deploy": "npm run build && wrangler deploy"
   },
   "build": {
     "appId": "app.veritas.desktop",
@@ -75,9 +76,11 @@
     "@capacitor/android": "^8.3.1",
     "@capacitor/cli": "^8.3.1",
     "@capacitor/core": "^8.3.1",
+    "@cloudflare/vite-plugin": "^1.35.0",
     "electron": "^41.5.0",
     "electron-builder": "^26.0.12",
     "png-to-ico": "^2.1.8",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "wrangler": "^4.87.0"
   }
 }
