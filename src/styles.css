@@ -187,10 +187,6 @@ video {
   grid-template-columns: repeat(3, 1fr);
 }
 
-.auth-flow.two {
-  grid-template-columns: repeat(2, 1fr);
-}
-
 .auth-flow span {
   min-width: 0;
   overflow: hidden;
