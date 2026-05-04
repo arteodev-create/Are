@@ -1662,15 +1662,14 @@ async function requestRegisterCode(input) {
     sentAt: Date.now(),
     expiresAt: Date.now() + emailVerificationTtlMs,
   };
-  try {
-    await sendVerificationEmail(email, code, 'register', locale, displayName);
-    pendingEmailVerifications.set(key, pending);
-    return { ok: true, expiresIn: Math.floor(emailVerificationTtlMs / 1000) };
-  } catch (error) {
-    if (!allowUnverifiedRegisterFallback) throw error;
+  if (allowUnverifiedRegisterFallback) {
     const user = await registerUserWithPasswordHash(pending.input);
     return { ok: true, verified: true, emailFallback: true, user };
   }
+
+  await sendVerificationEmail(email, code, 'register', locale, displayName);
+  pendingEmailVerifications.set(key, pending);
+  return { ok: true, expiresIn: Math.floor(emailVerificationTtlMs / 1000) };
 }
 
 async function verifyRegisterCode(input) {
