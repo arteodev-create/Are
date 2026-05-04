@@ -27,10 +27,6 @@ export function AuthScreen({
   const isLogin = authMode === 'login';
   const isReset = authMode === 'reset';
   const isRegisterCodeStep = isRegister && authStep === 3;
-  const loginSteps = [
-    t('auth.stepEmail'),
-    t('auth.stepPassword'),
-  ];
   const resetSteps = [
     t('auth.stepEmail'),
     t('auth.stepPassword'),
@@ -81,9 +77,9 @@ export function AuthScreen({
             <span>{hint}</span>
           </div>
 
-          {(isLogin || isReset) && (
-            <div className={`auth-flow ${isReset ? 'three' : 'two'}`} aria-label={t('auth.registerProgress')}>
-              {(isLogin ? loginSteps : resetSteps).map((label, index) => (
+          {isReset && (
+            <div className="auth-flow three" aria-label={t('auth.registerProgress')}>
+              {resetSteps.map((label, index) => (
                 <span key={label} className={index === authStep ? 'active' : index < authStep ? 'done' : ''}>
                   {label}
                 </span>
