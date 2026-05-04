@@ -396,6 +396,17 @@ export function Sidebar({
       {showMainMenu && (
         <div className="drawer-popover-layer" onMouseDown={() => { onUiSound?.('close'); onSetShowMainMenu(false); }}>
           <aside className="main-drawer" onMouseDown={(event) => event.stopPropagation()}>
+            <button
+              className="drawer-close-button"
+              type="button"
+              aria-label={t('common.close')}
+              onClick={() => {
+                onUiSound?.('close');
+                onSetShowMainMenu(false);
+              }}
+            >
+              <X size={20} />
+            </button>
             <div className="drawer-profile">
               <span className="avatar drawer-avatar">
                 <Avatar src={currentUser.avatarUrl} name={currentUser.displayName} size={28} />
