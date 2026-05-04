@@ -81,6 +81,68 @@ function fileFromDataUrl(dataUrl, name = 'veritas-gif.gif') {
   return new File([bytes], name.endsWith('.gif') ? name : `${name}.gif`, { type: mimeType });
 }
 
+function imageFileName(name = 'image', extension = 'webp') {
+  const clean = String(name || 'image').replace(/\.[^.]+$/, '').replace(/[^a-z0-9_.-]+/gi, '-').replace(/^-+|-+$/g, '');
+  return `${clean || 'image'}.${extension}`;
+}
+
+async function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, type, quality));
+}
+
+async function compressImageFile(file, options = {}) {
+  if (!file?.type?.startsWith('image/') || file.type === 'image/gif' || file.type === 'image/svg+xml') return file;
+  const maxDimension = options.maxDimension ?? 1600;
+  const maxBytes = options.maxBytes ?? 2 * 1024 * 1024;
+  if (file.size <= maxBytes && !options.force) return file;
+
+  let bitmap = null;
+  let objectUrl = '';
+  try {
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  } catch {
+    objectUrl = URL.createObjectURL(file);
+    bitmap = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = objectUrl;
+    });
+  }
+
+  try {
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width || 1, bitmap.height || 1));
+    const width = Math.max(1, Math.round((bitmap.width || 1) * scale));
+    const height = Math.max(1, Math.round((bitmap.height || 1) * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { alpha: true });
+    context.drawImage(bitmap, 0, 0, width, height);
+
+    const mimeType = 'image/webp';
+    let bestBlob = null;
+    for (const quality of [options.quality ?? 0.82, 0.72, 0.62]) {
+      const blob = await canvasToBlob(canvas, mimeType, quality);
+      if (!blob) continue;
+      bestBlob = blob;
+      if (blob.size <= maxBytes) break;
+    }
+    if (!bestBlob || bestBlob.size >= file.size) return file;
+    return new File([bestBlob], imageFileName(file.name, 'webp'), {
+      type: mimeType,
+      lastModified: Date.now(),
+    });
+  } finally {
+    bitmap?.close?.();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function compressUploadImages(files, options) {
+  return Promise.all(files.map((file) => compressImageFile(file, options).catch(() => file)));
+}
+
 const savedSession = localStorage.getItem('veritas-session');
 const savedTheme = localStorage.getItem('veritas-theme') || 'dark';
 const savedNotificationSetting = localStorage.getItem('veritas-notifications') ?? 'on';
@@ -2242,13 +2304,18 @@ function App() {
     const files = Array.from(fileList ?? []);
     if (!files.length || !activeChatId || editingMessage) return;
     const imageFiles = files.filter((file) => file.type.startsWith('image/')).slice(0, 4);
-    const selectedFiles = imageFiles.length === files.length ? imageFiles : files.slice(0, 1);
+    let selectedFiles = imageFiles.length === files.length ? imageFiles : files.slice(0, 1);
     if (files.length > 4 && imageFiles.length === files.length) {
       showNotice(t('notice.maxImages'));
     }
     if (imageFiles.length !== files.length && files.length > 1) {
       showNotice(t('notice.singleNonImage'));
     }
+    selectedFiles = await compressUploadImages(selectedFiles, {
+      maxDimension: 1600,
+      maxBytes: 2 * 1024 * 1024,
+      quality: 0.82,
+    });
     const oversized = selectedFiles.find((file) => file.size > maxUploadFileSize);
     if (oversized) {
       showNotice(t('notice.fileTooLarge', { name: oversized.name, size: formatFileSize(oversized.size, t) }));
@@ -2335,15 +2402,21 @@ function App() {
   }
 
   async function uploadProfileAvatar(fileList) {
-    const file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
+    let file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
     if (!file) {
       showNotice(t('notice.chooseAvatar'));
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showNotice(t('notice.avatarTooLarge'));
+    if (file.size > maxUploadFileSize) {
+      showNotice(t('notice.fileTooLarge', { name: file.name, size: formatFileSize(file.size, t) }));
       return;
     }
+    file = await compressImageFile(file, {
+      maxDimension: 512,
+      maxBytes: 650 * 1024,
+      quality: 0.78,
+      force: true,
+    }).catch(() => file);
     const formData = new FormData();
     formData.append('file', file);
     try {
@@ -2568,15 +2641,21 @@ function App() {
   }
 
   async function uploadNewChatAvatar(fileList) {
-    const file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
+    let file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
     if (!file) {
       showNotice(t('notice.aiAvatarChoose'));
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showNotice(t('notice.avatarTooLarge'));
+    if (file.size > maxUploadFileSize) {
+      showNotice(t('notice.fileTooLarge', { name: file.name, size: formatFileSize(file.size, t) }));
       return;
     }
+    file = await compressImageFile(file, {
+      maxDimension: 512,
+      maxBytes: 650 * 1024,
+      quality: 0.78,
+      force: true,
+    }).catch(() => file);
     const formData = new FormData();
     formData.append('file', file);
     try {
@@ -2599,15 +2678,21 @@ function App() {
   }
 
   async function uploadAiModelAvatar(fileList) {
-    const file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
+    let file = Array.from(fileList ?? []).find((item) => item.type.startsWith('image/'));
     if (!file) {
       showNotice(t('notice.aiAvatarChoose'));
       return '';
     }
-    if (file.size > 5 * 1024 * 1024) {
-      showNotice(t('notice.avatarTooLarge'));
+    if (file.size > maxUploadFileSize) {
+      showNotice(t('notice.fileTooLarge', { name: file.name, size: formatFileSize(file.size, t) }));
       return '';
     }
+    file = await compressImageFile(file, {
+      maxDimension: 512,
+      maxBytes: 650 * 1024,
+      quality: 0.78,
+      force: true,
+    }).catch(() => file);
     const formData = new FormData();
     formData.append('file', file);
     try {
