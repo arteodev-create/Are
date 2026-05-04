@@ -389,6 +389,20 @@ function makeMailer() {
   });
 }
 
+async function withTimeout(promise, timeoutMs, message = 'Operation timed out') {
+  let timeoutId;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(httpError(message, 503, 'AUTH_EMAIL_SEND_FAILED')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function normalizeLocale(value) {
   const language = String(value || '').toLowerCase();
   if (language.startsWith('ko')) return 'ko';
@@ -603,14 +617,19 @@ async function sendVerificationEmail(email, code, purpose = 'register', locale =
   const copy = verificationEmailCopy(purpose, locale);
   const name = recipientName || email;
   try {
-    await mailer.sendMail({
-      from: process.env.EMAIL_FROM || 'Veritas <noreply@example.com>',
-      to: email,
-      subject: copy.subject,
-      text: copy.text(code, name),
-      html: verificationEmailHtml(copy, code, name),
-    });
+    await withTimeout(
+      mailer.sendMail({
+        from: process.env.EMAIL_FROM || 'Veritas <noreply@example.com>',
+        to: email,
+        subject: copy.subject,
+        text: copy.text(code, name),
+        html: verificationEmailHtml(copy, code, name),
+      }),
+      emailSendTimeoutMs,
+      'Verification email timed out',
+    );
   } catch (error) {
+    if (error?.errorCode === 'AUTH_EMAIL_SEND_FAILED') throw error;
     throw httpError(error?.message || 'Could not send verification email', 503, 'AUTH_EMAIL_SEND_FAILED');
   }
 }
